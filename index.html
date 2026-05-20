@@ -353,85 +353,224 @@ bodyParts.forEach(({g,p,r,s})=>{
 });
 
 // ─── SKELETON ──────────────────────────────────────────────────────────────────
-const BONE=0xe8e0d0,BONE2=0xd8d0c0;
-function bone(geo,boneColor=BONE){return mk(geo,boneColor,.92,0x554433,.3,.45,.12)}
+const BONE=0xf0ece6, BONE2=0xe2ddd6, BONE3=0xc8c4bc;
+function bone(geo,c=BONE,op=.96){
+  return mk(geo,c,op,0x332211,.16,.52,.04);
+}
+function lathe(profile,segs=14){
+  return new THREE.LatheGeometry(profile.map(([r,h])=>new THREE.Vector2(r,h)),segs);
+}
+function tube(pts,radius,seg=24,rseg=8){
+  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),seg,radius,rseg,false);
+}
+function v3(x,y,z){return new THREE.Vector3(x,y,z);}
 
-// Skull
-const skull=bone(new THREE.SphereGeometry(.215,20,16));
-skull.position.set(0,1.62,0);
+// ── Skull ──────────────────────────────────────────────────────────────────────
+const skull=bone(new THREE.SphereGeometry(.215,28,20));
+skull.scale.set(1,.93,1.06); skull.position.set(0,1.635,.005);
 addM(skull,'skeleton','skull');
 
-const mandible=bone(new THREE.SphereGeometry(.14,12,8));
-mandible.scale.set(.9,.48,.82); mandible.position.set(0,1.39,.1);
-addM(mandible,'skeleton',null);
+// Face bones block
+const faceBlock=bone(new THREE.BoxGeometry(.2,.19,.15),BONE2);
+faceBlock.position.set(0,1.46,.1);
+addM(faceBlock,'skeleton',null);
 
-// Vertebrae (22)
-for(let i=0;i<22;i++){
-  const y=1.2-i*.115;
-  const r=i<7?.044:i<17?.054:.062;
-  const v=bone(new THREE.CylinderGeometry(r,r,.088,8),BONE2);
-  v.position.set(0,y,-.02);
-  addM(v,'skeleton',i===0?'spine':null);
-}
-
-// Ribcage (12 pairs)
-for(let i=0;i<12;i++){
-  const y=.9-i*.082;
-  const rw=.30-i*.008;
-  [-1,1].forEach(side=>{
-    const rib=bone(new THREE.TorusGeometry(rw,.038,6,22,Math.PI*.72),BONE2);
-    rib.position.set(side*rw*.44,y,0);
-    rib.rotation.z=side*Math.PI*.5+side*.28;
-    rib.rotation.y=side*.1;
-    addM(rib,'skeleton',i===4?'ribcage':null);
-  });
-}
-// Sternum
-const sternum=bone(new THREE.BoxGeometry(.055,.44,.055));
-sternum.position.set(0,.72,.18);
-addM(sternum,'skeleton',null);
-
-// Clavicles
+// Zygomatic arches (cheekbones)
 [-1,1].forEach(s=>{
-  const cl=bone(new THREE.CylinderGeometry(.024,.024,.27,8));
-  cl.position.set(s*.19,1.1,.1); cl.rotation.z=s*Math.PI*.38;
+  const zy=bone(tube([v3(s*.09,1.51,.07),v3(s*.165,1.5,.07),v3(s*.19,1.49,.02),v3(s*.18,1.48,-.04)],.015,12,7),BONE3);
+  addM(zy,'skeleton',null);
+});
+
+// Mandible
+const mandible=bone(tube([v3(.09,1.385,.07),v3(.105,1.375,.13),v3(0,1.365,.165),v3(-.105,1.375,.13),v3(-.09,1.385,.07)],.023,18,8),BONE2);
+addM(mandible,'skeleton',null);
+const mandBody=bone(new THREE.BoxGeometry(.13,.06,.06),BONE2);
+mandBody.position.set(0,1.375,.13); addM(mandBody,'skeleton',null);
+
+// Nasal bones
+const nasal=bone(new THREE.BoxGeometry(.046,.065,.035),BONE3);
+nasal.position.set(0,1.508,.135); addM(nasal,'skeleton',null);
+
+// Eye orbits
+[-1,1].forEach(s=>{
+  const orb=new THREE.Mesh(new THREE.TorusGeometry(.056,.014,7,20),new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:.9,transparent:true,opacity:.75}));
+  orb.position.set(s*.065,1.508,.1); orb.rotation.x=.22; orb.rotation.z=-s*.08;
+  G.skeleton.add(orb);
+});
+
+// ── Spine ─────────────────────────────────────────────────────────────────────
+for(let i=0;i<26;i++){
+  const y=1.22-i*.107;
+  const r=i<7?.04:i<19?.054:.068;
+  const v=bone(new THREE.CylinderGeometry(r,r,.082,10),i%2===0?BONE:BONE2);
+  v.position.set(0,y,-.025);
+  addM(v,'skeleton',i===0?'spine':null);
+  // Spinous process (visible ridge on back)
+  const sp=bone(new THREE.CylinderGeometry(.009,.006,.1,6),BONE3);
+  sp.position.set(0,y-.01,-.09); sp.rotation.x=.3;
+  addM(sp,'skeleton',null);
+}
+// Sacrum
+const sacrum=bone(lathe([[.065,0],[.072,.05],[.062,.12],[.04,.22]],12),BONE2);
+sacrum.scale.set(2.1,1,.85); sacrum.position.set(0,-.12,-.03);
+addM(sacrum,'skeleton',null);
+
+// ── Ribcage — curved TubeGeometry ─────────────────────────────────────────────
+function ribPts(i,s){
+  const y0=.97-i*.05, drop=i*.02;
+  const mxR=Math.max(.12,.14+Math.min(i,5)*.03-Math.max(0,i-5)*.022);
+  const mx=mxR*s, isTrue=i<7, isFlt=i>9;
+  const pts=[v3(s*.025,y0,-.04),v3(mx*.42,y0-drop*.25,.0),v3(mx,y0-drop*.6,.09),v3(mx*.82,y0-drop*.85,.17)];
+  if(!isFlt) pts.push(v3(isTrue?s*.075:mx*.72,y0-drop,isTrue?.2:.13));
+  return pts;
+}
+for(let i=0;i<12;i++){
+  const rr=Math.max(.009,.021-i*.001);
+  for(const s of[-1,1]){
+    const rib=bone(tube(ribPts(i,s),rr,28,8),i%2===0?BONE:BONE2);
+    addM(rib,'skeleton',i===4?'ribcage':null);
+  }
+}
+// Costal cartilage tips (ribs 1-7)
+for(let i=0;i<7;i++){
+  for(const s of[-1,1]){
+    const curve=new THREE.CatmullRomCurve3(ribPts(i,s));
+    const endPt=curve.getPoint(1);
+    const cart=new THREE.Mesh(new THREE.SphereGeometry(.016,7,6),new THREE.MeshStandardMaterial({color:0xc8e8d8,transparent:true,opacity:.7,roughness:.6}));
+    cart.position.copy(endPt); G.skeleton.add(cart);
+  }
+}
+
+// Sternum
+const sternumBody=bone(new THREE.BoxGeometry(.075,.5,.055));
+sternumBody.position.set(0,.7,.19); addM(sternumBody,'skeleton',null);
+const manub=bone(new THREE.BoxGeometry(.1,.11,.062),BONE2);
+manub.position.set(0,1.0,.185); addM(manub,'skeleton',null);
+
+// ── Clavicles ─────────────────────────────────────────────────────────────────
+[-1,1].forEach(s=>{
+  const cl=bone(tube([v3(s*.035,1.06,.13),v3(s*.13,1.08,.11),v3(s*.22,1.07,.055),v3(s*.33,1.06,-.01)],.023,14,8));
   addM(cl,'skeleton',null);
 });
 
-// Pelvis
-const pelvis=bone(new THREE.TorusGeometry(.24,.062,8,22,Math.PI*1.25));
-pelvis.position.set(0,-.27,0); pelvis.rotation.x=Math.PI*.5;
-addM(pelvis,'skeleton',null);
-
-// Arm bones
-[-1,1].forEach((s,i)=>{
-  const x=s*.48;
-  const hum=bone(new THREE.CylinderGeometry(.038,.033,.5,8));
-  hum.position.set(x*1.12,.66,0); hum.rotation.z=-s*.16;
-  addM(hum,'skeleton',null);
-  const rad=bone(new THREE.CylinderGeometry(.024,.019,.46,8));
-  rad.position.set(x*1.2,.14,.02); rad.rotation.z=-s*.13;
-  addM(rad,'skeleton',null);
-  const uln=bone(new THREE.CylinderGeometry(.019,.015,.46,8));
-  uln.position.set(x*1.24,.14,-.02); uln.rotation.z=-s*.13;
-  addM(uln,'skeleton',null);
+// ── Scapulae (shoulder blades) ────────────────────────────────────────────────
+[-1,1].forEach(s=>{
+  const scap=bone(new THREE.BoxGeometry(.23,.3,.016),BONE2);
+  scap.position.set(s*.29,.73,-.13); scap.rotation.y=s*.2; scap.rotation.z=-s*.08;
+  addM(scap,'skeleton',null);
+  // Spine of scapula
+  const spSc=bone(tube([v3(s*.18,.89,-.12),v3(s*.27,.86,-.12),v3(s*.35,.84,-.1)],.018,10,7));
+  addM(spSc,'skeleton',null);
+  // Coracoid + acromion
+  const acr=bone(new THREE.SphereGeometry(.027,8,6));
+  acr.position.set(s*.355,1.04,.01); addM(acr,'skeleton',null);
+  const cor=bone(new THREE.CylinderGeometry(.018,.015,.07,7));
+  cor.position.set(s*.31,1.02,.07); cor.rotation.z=-s*.7; addM(cor,'skeleton',null);
 });
 
-// Leg bones
+// ── Pelvis ────────────────────────────────────────────────────────────────────
 [-1,1].forEach(s=>{
-  const x=s*.13;
-  const fem=bone(new THREE.CylinderGeometry(.052,.042,.7,10));
-  fem.position.set(x,-.74,0);
+  // Iliac crest
+  const ilCr=bone(tube([v3(s*.09,-.04,-.06),v3(s*.23,.04,-.06),v3(s*.32,.04,.0),v3(s*.3,.02,.09),v3(s*.21,-.04,.11)],.03,18,8));
+  addM(ilCr,'skeleton',null);
+  // Ilium wing (flat)
+  const ilW=bone(new THREE.BoxGeometry(.22,.28,.035),BONE2);
+  ilW.position.set(s*.225,-.04,.0); ilW.rotation.y=s*.3; addM(ilW,'skeleton',null);
+  // Acetabulum (hip socket)
+  const acet=bone(new THREE.TorusGeometry(.058,.022,8,18),BONE3);
+  acet.position.set(s*.205,-.32,.065); acet.rotation.y=s*.55; addM(acet,'skeleton',null);
+  // Ischium
+  const isch=bone(new THREE.SphereGeometry(.052,10,8),BONE2);
+  isch.scale.set(.75,1,.65); isch.position.set(s*.17,-.46,.0); addM(isch,'skeleton',null);
+});
+// Pubic arch
+const pubArch=bone(tube([v3(-.1,-.45,.1),v3(-.04,-.47,.14),v3(0,-.47,.15),v3(.04,-.47,.14),v3(.1,-.45,.1)],.025,16,8),BONE2);
+addM(pubArch,'skeleton',null);
+// Sacroiliac region
+const sacrIl=bone(new THREE.BoxGeometry(.09,.2,.038),BONE3);
+sacrIl.position.set(0,-.08,-.04); addM(sacrIl,'skeleton',null);
+
+// ── Arm bones ─────────────────────────────────────────────────────────────────
+[-1,1].forEach(s=>{
+  // Humerus (LatheGeometry — wider at ends)
+  const humG=lathe([[.044,0],[.038,.06],[.029,.2],[.025,.33],[.031,.44],[.046,.52]]);
+  const hum=bone(humG); hum.position.set(s*.47,.63,0); hum.rotation.z=-s*.18;
+  addM(hum,'skeleton',null);
+  // Humeral head (ball at shoulder)
+  const humH=bone(new THREE.SphereGeometry(.048,14,12));
+  humH.position.set(s*.435,.93,.02); addM(humH,'skeleton',null);
+  // Radius
+  const radG=lathe([[.036,0],[.03,.04],[.023,.18],[.019,.36],[.024,.44]]);
+  const rad=bone(radG); rad.position.set(s*.545,.37,0); rad.rotation.z=-s*.15;
+  addM(rad,'skeleton',null);
+  // Ulna
+  const ulnG=lathe([[.012,0],[.011,.14],[.01,.3],[.011,.44],[.02,.48]],10);
+  const uln=bone(ulnG,BONE2); uln.position.set(s*.582,.37,-.02); uln.rotation.z=-s*.15;
+  addM(uln,'skeleton',null);
+  // Olecranon process
+  const olec=bone(new THREE.SphereGeometry(.026,8,6),BONE2);
+  olec.scale.set(1,1.3,.8); olec.position.set(s*.582,.62,-.025); addM(olec,'skeleton',null);
+  // Carpals (wrist)
+  const carp=bone(new THREE.BoxGeometry(.1,.055,.048),BONE2);
+  carp.position.set(s*.63,-.075,0); addM(carp,'skeleton',null);
+  // 5 Metacarpals + phalanges
+  for(let f=0;f<5;f++){
+    const fx=s*(0.575+f*.02), fz=f*.016-.032;
+    const meta=bone(new THREE.CylinderGeometry(.011,.009,.1,7));
+    meta.position.set(fx,-.175,fz); addM(meta,'skeleton',null);
+    const pp=bone(new THREE.CylinderGeometry(.009,.008,.072,7),BONE2);
+    pp.position.set(fx,-.275,fz); addM(pp,'skeleton',null);
+    const dp=bone(new THREE.CylinderGeometry(.007,.005,.052,6),BONE3);
+    dp.position.set(fx,-.36,fz); addM(dp,'skeleton',null);
+  }
+});
+
+// ── Leg bones ─────────────────────────────────────────────────────────────────
+[-1,1].forEach(s=>{
+  const xH=s*.2, xK=s*.13;          // hip-x, knee-x
+  const yK=-1.15, yA=-1.81;         // knee-y, ankle-y
+  // Femur shaft (LatheGeometry)
+  const femG=lathe([[.062,0],[.054,.09],[.041,.28],[.036,.46],[.043,.62],[.058,.76]],16);
+  const fem=bone(femG); fem.position.set((xH+xK)*.5,yK,0); fem.rotation.z=-s*.065;
   addM(fem,'skeleton',null);
-  const pat=bone(new THREE.SphereGeometry(.038,8,6));
-  pat.position.set(x,-1.14,.07);
-  addM(pat,'skeleton',null);
-  const tib=bone(new THREE.CylinderGeometry(.036,.028,.66,10));
-  tib.position.set(x,-1.41,.01);
-  addM(tib,'skeleton',null);
-  const fib=bone(new THREE.CylinderGeometry(.017,.013,.64,8));
-  fib.position.set(x+s*.04,-1.41,-.01);
-  addM(fib,'skeleton',null);
+  // Femoral head
+  const femH=bone(new THREE.SphereGeometry(.058,14,12));
+  femH.position.set(xH,-.31,.02); addM(femH,'skeleton',null);
+  // Femoral neck
+  const femN=bone(tube([v3(xH,-.31,.02),v3((xH+xK*.5)*.9,-.36,.01),v3((xH+xK)*.5,-.42,0)],.03,10,8));
+  addM(femN,'skeleton',null);
+  // Greater trochanter
+  const troch=bone(new THREE.SphereGeometry(.042,10,8),BONE2);
+  troch.scale.set(1.45,.8,.9); troch.position.set(s*.27,-.37,-.01); addM(troch,'skeleton',null);
+  // Patella
+  const pat=bone(new THREE.SphereGeometry(.04,12,8));
+  pat.scale.set(1,.78,1.15); pat.position.set(xK,-1.17,.09); addM(pat,'skeleton',null);
+  // Tibia (LatheGeometry — wide tibial plateau at top)
+  const tibG=lathe([[.056,0],[.05,.04],[.036,.2],[.03,.42],[.035,.56],[.042,.64]],14);
+  const tib=bone(tibG); tib.position.set(xK,yA,0); addM(tib,'skeleton',null);
+  // Tibial spine
+  const tibSp=bone(new THREE.SphereGeometry(.025,8,6),BONE2);
+  tibSp.position.set(xK,-1.19,.01); addM(tibSp,'skeleton',null);
+  // Fibula
+  const fibG=lathe([[.016,0],[.013,.1],[.012,.38],[.014,.58],[.022,.63]],10);
+  const fib=bone(fibG,BONE2); fib.position.set(xK+s*.04,yA,-.01); addM(fib,'skeleton',null);
+  // Calcaneus (heel)
+  const calc=bone(new THREE.SphereGeometry(.065,12,8),BONE2);
+  calc.scale.set(.72,.58,1.15); calc.position.set(xK,-1.875,-.05); addM(calc,'skeleton',null);
+  // Talus
+  const talus=bone(new THREE.SphereGeometry(.04,10,8));
+  talus.scale.set(.9,.68,1); talus.position.set(xK,-1.815,.06); addM(talus,'skeleton',null);
+  // Navicular + cuneiform group
+  const tarsal=bone(new THREE.BoxGeometry(.09,.045,.06),BONE2);
+  tarsal.position.set(xK,-1.83,.13); addM(tarsal,'skeleton',null);
+  // 5 Metatarsals + toe phalanges
+  for(let t=0;t<5;t++){
+    const tz=.18+t*.028;
+    const mt=bone(new THREE.CylinderGeometry(.012,.009,.13,7));
+    mt.position.set(xK,-(1.83+t*.004),tz); mt.rotation.x=-.28; addM(mt,'skeleton',null);
+    const toe=bone(new THREE.CylinderGeometry(.009,.007,.07,6),BONE2);
+    toe.position.set(xK,-(1.89+t*.004),tz+.12); toe.rotation.x=-.28; addM(toe,'skeleton',null);
+  }
 });
 
 // ─── NERVOUS SYSTEM ────────────────────────────────────────────────────────────
