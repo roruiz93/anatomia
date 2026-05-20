@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anatomía Humana 3D — Explorador Interactivo</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#050a15;font-family:'Segoe UI',system-ui,sans-serif;color:#fff;overflow:hidden;height:100vh;width:100vw}
+#canvas-container{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1}
+canvas{display:block}
+
+/* Loading */
+#loading{position:fixed;inset:0;background:#050a15;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1000;transition:opacity .6s ease}
+#loading.hidden{opacity:0;pointer-events:none}
+.load-title{font-size:1.1rem;letter-spacing:4px;color:rgba(255,255,255,.5);text-transform:uppercase;margin-bottom:24px}
+.load-bar{width:220px;height:2px;background:rgba(255,255,255,.08);border-radius:1px;overflow:hidden}
+.load-fill{height:100%;background:linear-gradient(90deg,#00d4ff,#7b2fff);animation:loadFill 1.2s ease forwards}
+@keyframes loadFill{from{width:0}to{width:100%}}
+.load-sub{margin-top:12px;font-size:.65rem;letter-spacing:2px;color:rgba(255,255,255,.25)}
+
+/* UI overlay */
+#ui{position:fixed;inset:0;z-index:10;pointer-events:none}
+
+/* Header */
+#header{position:absolute;top:22px;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap}
+#header h1{font-size:1.6rem;font-weight:700;background:linear-gradient(135deg,#00d4ff,#7b2fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:3px;text-transform:uppercase}
+#header p{font-size:.65rem;color:rgba(255,255,255,.35);letter-spacing:4px;margin-top:3px}
+
+/* Systems panel */
+#systems-panel{position:absolute;left:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;pointer-events:all}
+.sys-btn{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(5,10,21,.85);border:1px solid rgba(255,255,255,.1);border-radius:10px;cursor:pointer;transition:all .25s ease;min-width:190px;backdrop-filter:blur(12px);user-select:none}
+.sys-btn:hover{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.04);transform:translateX(3px)}
+.sys-btn.active{border-color:var(--c);background:rgba(var(--cr),var(--cg),var(--cb),.12);box-shadow:0 0 16px rgba(var(--cr),var(--cg),var(--cb),.22)}
+.sys-btn .dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex-shrink:0;box-shadow:0 0 8px var(--c);transition:transform .2s}
+.sys-btn.active .dot{transform:scale(1.2)}
+.sys-btn .lbl{font-size:.78rem;font-weight:500;color:rgba(255,255,255,.8);flex:1}
+.sys-btn .tog{font-size:.6rem;color:rgba(255,255,255,.3);letter-spacing:1px;font-weight:600}
+.sys-btn.active .tog{color:var(--c)}
+
+/* Info panel */
+#info-panel{position:absolute;right:18px;top:50%;transform:translateY(-50%);width:265px;background:rgba(5,10,21,.92);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:20px;backdrop-filter:blur(20px);opacity:0;transition:opacity .3s ease,transform .3s ease;pointer-events:none;transform:translateY(-50%) translateX(8px)}
+#info-panel.visible{opacity:1;transform:translateY(-50%) translateX(0)}
+#info-panel .ip-system{font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--pc,#00d4ff);margin-bottom:10px;font-weight:600}
+#info-panel .ip-name{font-size:1.2rem;font-weight:700;color:#fff;line-height:1.2}
+#info-panel .ip-name-en{font-size:.72rem;color:rgba(255,255,255,.38);font-style:italic;margin-bottom:14px;margin-top:2px}
+#info-panel .ip-section{font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:5px;margin-top:12px}
+#info-panel .ip-text{font-size:.8rem;color:rgba(255,255,255,.72);line-height:1.55}
+#info-panel .ip-fact{font-size:.76rem;color:rgba(255,255,255,.5);line-height:1.55;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:8px;border-left:3px solid var(--pc,#00d4ff)}
+#info-panel .ip-close{position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:transparent;color:rgba(255,255,255,.4);cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;pointer-events:all;transition:all .2s}
+#info-panel .ip-close:hover{border-color:rgba(255,255,255,.5);color:#fff}
+
+/* Controls bar */
+#controls-bar{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);display:flex;gap:8px;pointer-events:all;flex-wrap:wrap;justify-content:center}
+.ctrl-btn{padding:7px 15px;background:rgba(5,10,21,.85);border:1px solid rgba(255,255,255,.12);border-radius:20px;color:rgba(255,255,255,.6);cursor:pointer;font-size:.72rem;letter-spacing:.5px;transition:all .2s ease;backdrop-filter:blur(10px);white-space:nowrap}
+.ctrl-btn:hover{border-color:rgba(255,255,255,.35);color:#fff;background:rgba(255,255,255,.06)}
+.ctrl-btn.active{background:rgba(0,212,255,.12);border-color:#00d4ff;color:#00d4ff}
+
+/* Help */
+#help{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);font-size:.62rem;color:rgba(255,255,255,.22);letter-spacing:1.5px;text-align:center;white-space:nowrap}
+
+/* Tooltip */
+#tip{position:fixed;background:rgba(5,10,21,.92);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:5px 11px;font-size:.72rem;color:#fff;pointer-events:none;opacity:0;transition:opacity .15s;z-index:200;backdrop-filter:blur(10px)}
+#tip.on{opacity:1}
+
+/* Opacity sliders */
+#opacity-panel{position:absolute;left:18px;bottom:100px;background:rgba(5,10,21,.88);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px;backdrop-filter:blur(12px);pointer-events:all;display:none;width:200px}
+#opacity-panel.show{display:block}
+#opacity-panel h3{font-size:.65rem;letter-spacing:2px;color:rgba(255,255,255,.4);text-transform:uppercase;margin-bottom:10px}
+.op-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.op-row label{font-size:.68rem;color:rgba(255,255,255,.6);width:85px;flex-shrink:0}
+.op-row input[type=range]{flex:1;accent-color:#00d4ff;height:3px}
+
+/* Legend */
+#legend{position:absolute;bottom:22px;right:18px;background:rgba(5,10,21,.85);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;pointer-events:none;backdrop-filter:blur(10px)}
+#legend h3{font-size:.58rem;letter-spacing:2px;color:rgba(255,255,255,.3);text-transform:uppercase;margin-bottom:8px}
+.leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.leg-lbl{font-size:.65rem;color:rgba(255,255,255,.5)}
+
+/* Scan line overlay */
+#scan{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,.012) 2px,rgba(0,212,255,.012) 4px);pointer-events:none;z-index:5}
+
+@media(max-width:768px){
+  #systems-panel{left:8px;gap:5px}
+  .sys-btn{min-width:160px;padding:8px 10px}
+  #info-panel{width:220px;right:8px;padding:14px}
+  #header h1{font-size:1.1rem}
+  #legend{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="scan"></div>
+<div id="canvas-container"></div>
+
+<div id="loading">
+  <div class="load-title">Anatomía 3D</div>
+  <div class="load-bar"><div class="load-fill"></div></div>
+  <div class="load-sub">CARGANDO SISTEMAS CORPORALES</div>
+</div>
+
+<div id="ui">
+  <div id="header">
+    <h1>Anatomía Humana 3D</h1>
+    <p>EXPLORADOR INTERACTIVO · EDUCACIÓN MÉDICA</p>
+  </div>
+
+  <div id="systems-panel">
+    <div class="sys-btn active" data-sys="skeleton" style="--c:#e8e0d0;--cr:232;--cg:224;--cb:208">
+      <div class="dot"></div><div class="lbl">Sistema Óseo</div><div class="tog">ON</div>
+    </div>
+    <div class="sys-btn active" data-sys="nervous" style="--c:#ffd700;--cr:255;--cg:215;--cb:0">
+      <div class="dot"></div><div class="lbl">Sistema Nervioso</div><div class="tog">ON</div>
+    </div>
+    <div class="sys-btn active" data-sys="respiratory" style="--c:#00ccee;--cr:0;--cg:204;--cb:238">
+      <div class="dot"></div><div class="lbl">Sistema Respiratorio</div><div class="tog">ON</div>
+    </div>
+    <div class="sys-btn active" data-sys="circulatory" style="--c:#ff4444;--cr:255;--cg:68;--cb:68">
+      <div class="dot"></div><div class="lbl">Sistema Circulatorio</div><div class="tog">ON</div>
+    </div>
+    <div class="sys-btn active" data-sys="muscular" style="--c:#ff6699;--cr:255;--cg:102;--cb:153">
+      <div class="dot"></div><div class="lbl">Sistema Muscular</div><div class="tog">ON</div>
+    </div>
+  </div>
+
+  <div id="info-panel">
+    <button class="ip-close" id="ip-close">✕</button>
+    <div class="ip-system" id="ip-system">SISTEMA</div>
+    <div class="ip-name" id="ip-name">Órgano</div>
+    <div class="ip-name-en" id="ip-name-en">Organ</div>
+    <div class="ip-section">Función Principal</div>
+    <div class="ip-text ip-func" id="ip-func">—</div>
+    <div class="ip-section">Dato Curioso</div>
+    <div class="ip-fact" id="ip-fact">—</div>
+  </div>
+
+  <div id="controls-bar">
+    <button class="ctrl-btn" id="btn-all">Mostrar Todo</button>
+    <button class="ctrl-btn" id="btn-none">Ocultar Todo</button>
+    <button class="ctrl-btn" id="btn-rotate">⟳ Auto Rotar</button>
+    <button class="ctrl-btn" id="btn-opacity">Opacidad</button>
+    <button class="ctrl-btn" id="btn-reset">↺ Reiniciar</button>
+    <button class="ctrl-btn" id="btn-front">Vista Frontal</button>
+    <button class="ctrl-btn" id="btn-side">Vista Lateral</button>
+    <button class="ctrl-btn" id="btn-back">Vista Trasera</button>
+  </div>
+
+  <div id="help">Arrastra para rotar &nbsp;·&nbsp; Scroll para zoom &nbsp;·&nbsp; Click en órganos para información</div>
+
+  <div id="opacity-panel">
+    <h3>Opacidad por Sistema</h3>
+    <div class="op-row"><label>Sistema Óseo</label><input type="range" min="0" max="1" step=".05" value="1" data-op="skeleton"></div>
+    <div class="op-row"><label>Nervioso</label><input type="range" min="0" max="1" step=".05" value="1" data-op="nervous"></div>
+    <div class="op-row"><label>Respiratorio</label><input type="range" min="0" max="1" step=".05" value="1" data-op="respiratory"></div>
+    <div class="op-row"><label>Circulatorio</label><input type="range" min="0" max="1" step=".05" value="1" data-op="circulatory"></div>
+    <div class="op-row"><label>Muscular</label><input type="range" min="0" max="1" step=".05" value="1" data-op="muscular"></div>
+    <div class="op-row"><label>Cuerpo</label><input type="range" min="0" max="1" step=".05" value=".25" data-op="body"></div>
+  </div>
+
+  <div id="legend">
+    <h3>Leyenda</h3>
+    <div class="leg-row"><div class="leg-dot" style="background:#e8e0d0;box-shadow:0 0 5px #e8e0d0"></div><div class="leg-lbl">Sistema Óseo</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffd700;box-shadow:0 0 5px #ffd700"></div><div class="leg-lbl">Sistema Nervioso</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#00ccee;box-shadow:0 0 5px #00ccee"></div><div class="leg-lbl">Sistema Respiratorio</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ff4444;box-shadow:0 0 5px #ff4444"></div><div class="leg-lbl">Arterias</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#4466ff;box-shadow:0 0 5px #4466ff"></div><div class="leg-lbl">Venas</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ff6699;box-shadow:0 0 5px #ff6699"></div><div class="leg-lbl">Sistema Muscular</div></div>
+  </div>
+</div>
+
+<div id="tip"></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── ORGAN DATABASE ────────────────────────────────────────────────────────────
+const ORGANS = {
+  brain:{name:'Cerebro',nameEn:'Brain',system:'nervous',sysLabel:'SISTEMA NERVIOSO',
+    func:'Centro de control del sistema nervioso. Procesa información sensorial, dirige el movimiento voluntario y es sede de la conciencia, memoria, lenguaje y emociones.',
+    fact:'El cerebro humano contiene ~86 mil millones de neuronas con más de 100 billones de conexiones sinápticas — más que estrellas en la Vía Láctea.'},
+  cerebellum:{name:'Cerebelo',nameEn:'Cerebellum',system:'nervous',sysLabel:'SISTEMA NERVIOSO',
+    func:'Coordina el movimiento preciso, el equilibrio y el tono muscular. Recibe información sensorial y ajusta la actividad motora en tiempo real.',
+    fact:'Aunque representa solo el 10% del volumen cerebral, alberga más de la mitad de todas las neuronas del encéfalo.'},
+  spinalCord:{name:'Médula Espinal',nameEn:'Spinal Cord',system:'nervous',sysLabel:'SISTEMA NERVIOSO',
+    func:'Conduce impulsos nerviosos entre el encéfalo y el cuerpo. Además procesa reflejos autónomamente, sin necesidad de consultar al cerebro.',
+    fact:'Tiene solo 45 cm de largo pero contiene millones de fibras nerviosas. Una lesión en su parte alta puede paralizar desde el cuello hacia abajo.'},
+  heart:{name:'Corazón',nameEn:'Heart',system:'circulatory',sysLabel:'SISTEMA CIRCULATORIO',
+    func:'Bomba muscular de cuatro cámaras que impulsa la sangre por los circuitos pulmonar y sistémico, manteniendo oxigenados todos los tejidos.',
+    fact:'Late ~100,000 veces al día bombeando ~7,500 L de sangre. A lo largo de una vida supera los 2,500 millones de latidos sin descanso.'},
+  aorta:{name:'Aorta',nameEn:'Aorta',system:'circulatory',sysLabel:'SISTEMA CIRCULATORIO',
+    func:'Arteria principal del cuerpo. Recibe sangre oxigenada del ventrículo izquierdo y la distribuye hacia todos los tejidos a través de sus ramas.',
+    fact:'Con ~2.5 cm de diámetro soporta presiones de hasta 200 mmHg. Su pared tiene tres capas que le confieren elasticidad y resistencia extraordinarias.'},
+  veins:{name:'Sistema Venoso',nameEn:'Venous System',system:'circulatory',sysLabel:'SISTEMA CIRCULATORIO',
+    func:'Red de vasos que retorna sangre desoxigenada de los tejidos al corazón. Las venas cava superior e inferior son las principales colectoras.',
+    fact:'El cuerpo tiene ~60,000 km de vasos sanguíneos. Las venas contienen el 70% del volumen total de sangre en circulación.'},
+  lungs:{name:'Pulmones',nameEn:'Lungs',system:'respiratory',sysLabel:'SISTEMA RESPIRATORIO',
+    func:'Realizan el intercambio gaseoso: captan O₂ del aire inspirado y eliminan CO₂ hacia el exterior a través de ~300 millones de alvéolos.',
+    fact:'Si pudieras extender toda la superficie alveolar, cubriría unos 70 m² — equivalente a una cancha de tenis completa.'},
+  trachea:{name:'Tráquea',nameEn:'Trachea',system:'respiratory',sysLabel:'SISTEMA RESPIRATORIO',
+    func:'Tubo cartilaginoso de ~12 cm que conduce el aire entre la laringe y los bronquios. Sus anillos en C impiden el colapso durante la inhalación.',
+    fact:'La tráquea está tapizada por células ciliadas que atrapan partículas en moco y las mueven hacia la garganta a 1–2 cm por minuto.'},
+  diaphragm:{name:'Diafragma',nameEn:'Diaphragm',system:'respiratory',sysLabel:'SISTEMA RESPIRATORIO',
+    func:'Principal músculo inspiratorio. Su contracción amplía la cavidad torácica creando presión negativa que aspira aire hacia los pulmones.',
+    fact:'Se contrae ~20,000 veces al día. El hipo es producido por espasmos involuntarios de este músculo seguidos del cierre brusco de las cuerdas vocales.'},
+  skull:{name:'Cráneo',nameEn:'Skull',system:'skeleton',sysLabel:'SISTEMA ÓSEO',
+    func:'Estructura de 22 huesos que protege el encéfalo y forma el esqueleto de la cara. Las suturas craneales fusionan los huesos a lo largo de la infancia.',
+    fact:'El hueso más duro del cuerpo es el esmalte dental, pero dentro del esqueleto es el hueso cortical del temporal del cráneo el de mayor densidad.'},
+  spine:{name:'Columna Vertebral',nameEn:'Spine',system:'skeleton',sysLabel:'SISTEMA ÓSEO',
+    func:'33 vértebras apiladas que protegen la médula espinal, sostienen el peso corporal y permiten la movilidad del tronco en múltiples planos.',
+    fact:'La columna tiene cuatro curvaturas en S que actúan como resortes absorbiendo impactos. Puede soportar hasta 10 veces el peso corporal.'},
+  ribcage:{name:'Caja Torácica',nameEn:'Rib Cage',system:'skeleton',sysLabel:'SISTEMA ÓSEO',
+    func:'12 pares de costillas que protegen corazón, pulmones y grandes vasos. Junto al esternón y la columna participan activamente en la respiración.',
+    fact:'Las últimas dos pares son "flotantes" — no se articulan con el esternón — lo que da mayor flexibilidad al torso durante movimientos extremos.'},
+  biceps:{name:'Bíceps Braquial',nameEn:'Biceps Brachii',system:'muscular',sysLabel:'SISTEMA MUSCULAR',
+    func:'Flexor principal del codo y supinador del antebrazo. Su inserción en el radio le otorga palanca mecánica para levantar cargas y girar la mano.',
+    fact:'"Bíceps" significa "dos cabezas" en latín. Sus dos orígenes confluyen en un único tendón que los deportistas pueden palpar fácilmente en el codo.'},
+  quadriceps:{name:'Cuádriceps Femoral',nameEn:'Quadriceps',system:'muscular',sysLabel:'SISTEMA MUSCULAR',
+    func:'Cuatro músculos que extienden la rodilla y sostienen la postura bípeda. Son los músculos más voluminosos y potentes del cuerpo humano.',
+    fact:'Pueden generar fuerzas de extensión superiores a 3,000 N. Durante una sentadilla profunda, la rótula soporta presiones de 6–7 veces el peso corporal.'},
+  pectorals:{name:'Pectoral Mayor',nameEn:'Pectoralis Major',system:'muscular',sysLabel:'SISTEMA MUSCULAR',
+    func:'Gran músculo del pecho que realiza aducción, flexión y rotación interna del brazo. Esencial para movimientos de empuje horizontal y trepa.',
+    fact:'Se divide en porción clavicular y esternocostal, lo que permite activarlas de forma selectiva según el ángulo del movimiento.'},
+};
+
+// ─── RENDERER ─────────────────────────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050a15);
+scene.fog = new THREE.FogExp2(0x050a15,0.06);
+
+const camera = new THREE.PerspectiveCamera(42,window.innerWidth/window.innerHeight,0.1,100);
+camera.position.set(0,0.1,6.5);
+
+const controls = new OrbitControls(camera,renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 2.5;
+controls.maxDistance = 14;
+controls.target.set(0,0.1,0);
+controls.update();
+
+// ─── LIGHTING ──────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x112244,0.9));
+const key = new THREE.DirectionalLight(0xffffff,1.6);
+key.position.set(2,4,3); key.castShadow=true; scene.add(key);
+const fill = new THREE.DirectionalLight(0x4488ff,0.7);
+fill.position.set(-3,1,2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xaa66ff,0.4);
+rim.position.set(0,2,-4); scene.add(rim);
+const bot = new THREE.PointLight(0x224466,0.6,12);
+bot.position.set(0,-3,2); scene.add(bot);
+
+// ─── BACKGROUND PARTICLES ──────────────────────────────────────────────────────
+{
+  const n=400,pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){pos[i*3]=(Math.random()-.5)*40;pos[i*3+1]=(Math.random()-.5)*40;pos[i*3+2]=(Math.random()-.5)*40-8;}
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0x4488ff,size:.04,transparent:true,opacity:.4})));
+}
+
+// ─── GROUPS ────────────────────────────────────────────────────────────────────
+const G = {
+  body:new THREE.Group(),
+  skeleton:new THREE.Group(),
+  nervous:new THREE.Group(),
+  respiratory:new THREE.Group(),
+  circulatory:new THREE.Group(),
+  muscular:new THREE.Group(),
+};
+Object.values(G).forEach(g=>scene.add(g));
+
+const interactable=[];
+
+function addM(mesh,sys,organId){
+  mesh.userData.system=sys;
+  mesh.userData.organId=organId||null;
+  mesh.userData.origEmissive=mesh.material.emissive.clone();
+  mesh.userData.origEmissiveInt=mesh.material.emissiveIntensity;
+  mesh.userData.origOpacity=mesh.material.opacity;
+  G[sys].add(mesh);
+  if(organId) interactable.push(mesh);
+  return mesh;
+}
+
+function mk(geo,color,opacity=1,emissive=0x000000,eInt=.3,rough=.55,metal=.1){
+  const m=new THREE.MeshStandardMaterial({
+    color,emissive,emissiveIntensity:eInt,roughness:rough,metalness:metal,
+    transparent:opacity<1,opacity,depthWrite:opacity>=.5,side:THREE.FrontSide
+  });
+  const mesh=new THREE.Mesh(geo,m);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  return mesh;
+}
+
+// ─── BODY SHELL ────────────────────────────────────────────────────────────────
+const SKIN=0xc49060, SKINO=.22;
+function skin(geo){return mk(geo,SKIN,SKINO,0x110800,.1,.9,0)}
+
+// Body shell parts
+const bodyParts=[
+  // head
+  {g:new THREE.SphereGeometry(.255,20,16),p:[0,1.62,0]},
+  // neck
+  {g:new THREE.CylinderGeometry(.09,.1,.22,12),p:[0,1.3,0]},
+  // torso upper
+  {g:new THREE.CylinderGeometry(.27,.22,.88,16),p:[0,.68,0]},
+  // abdomen
+  {g:new THREE.CylinderGeometry(.22,.2,.52,16),p:[0,.08,0]},
+  // hips
+  {g:new THREE.CylinderGeometry(.24,.22,.28,16),p:[0,-.28,0]},
+  // upper arms
+  {g:new THREE.CylinderGeometry(.075,.065,.56,12),p:[-0.49,.66,0],r:[0,0,.16]},
+  {g:new THREE.CylinderGeometry(.075,.065,.56,12),p:[0.49,.66,0],r:[0,0,-.16]},
+  // lower arms
+  {g:new THREE.CylinderGeometry(.062,.05,.52,12),p:[-0.56,.14,0],r:[0,0,.13]},
+  {g:new THREE.CylinderGeometry(.062,.05,.52,12),p:[0.56,.14,0],r:[0,0,-.13]},
+  // hands
+  {g:new THREE.SphereGeometry(.072,10,8),p:[-0.63,-.18,0],s:[1,1.3,.65]},
+  {g:new THREE.SphereGeometry(.072,10,8),p:[0.63,-.18,0],s:[1,1.3,.65]},
+  // upper legs
+  {g:new THREE.CylinderGeometry(.1,.085,.78,12),p:[-0.13,-.76,0]},
+  {g:new THREE.CylinderGeometry(.1,.085,.78,12),p:[0.13,-.76,0]},
+  // lower legs
+  {g:new THREE.CylinderGeometry(.076,.055,.72,12),p:[-0.13,-1.43,0]},
+  {g:new THREE.CylinderGeometry(.076,.055,.72,12),p:[0.13,-1.43,0]},
+  // feet
+  {g:new THREE.BoxGeometry(.14,.08,.28),p:[-0.13,-1.85,.05]},
+  {g:new THREE.BoxGeometry(.14,.08,.28),p:[0.13,-1.85,.05]},
+];
+bodyParts.forEach(({g,p,r,s})=>{
+  const m=skin(g);
+  m.position.set(...p);
+  if(r) m.rotation.set(...r);
+  if(s) m.scale.set(...s);
+  G.body.add(m);
+});
+
+// ─── SKELETON ──────────────────────────────────────────────────────────────────
+const BONE=0xe8e0d0,BONE2=0xd8d0c0;
+function bone(geo,boneColor=BONE){return mk(geo,boneColor,.92,0x554433,.3,.45,.12)}
+
+// Skull
+const skull=bone(new THREE.SphereGeometry(.215,20,16));
+skull.position.set(0,1.62,0);
+addM(skull,'skeleton','skull');
+
+const mandible=bone(new THREE.SphereGeometry(.14,12,8));
+mandible.scale.set(.9,.48,.82); mandible.position.set(0,1.39,.1);
+addM(mandible,'skeleton',null);
+
+// Vertebrae (22)
+for(let i=0;i<22;i++){
+  const y=1.2-i*.115;
+  const r=i<7?.044:i<17?.054:.062;
+  const v=bone(new THREE.CylinderGeometry(r,r,.088,8),BONE2);
+  v.position.set(0,y,-.02);
+  addM(v,'skeleton',i===0?'spine':null);
+}
+
+// Ribcage (12 pairs)
+for(let i=0;i<12;i++){
+  const y=.9-i*.082;
+  const rw=.30-i*.008;
+  [-1,1].forEach(side=>{
+    const rib=bone(new THREE.TorusGeometry(rw,.038,6,22,Math.PI*.72),BONE2);
+    rib.position.set(side*rw*.44,y,0);
+    rib.rotation.z=side*Math.PI*.5+side*.28;
+    rib.rotation.y=side*.1;
+    addM(rib,'skeleton',i===4?'ribcage':null);
+  });
+}
+// Sternum
+const sternum=bone(new THREE.BoxGeometry(.055,.44,.055));
+sternum.position.set(0,.72,.18);
+addM(sternum,'skeleton',null);
+
+// Clavicles
+[-1,1].forEach(s=>{
+  const cl=bone(new THREE.CylinderGeometry(.024,.024,.27,8));
+  cl.position.set(s*.19,1.1,.1); cl.rotation.z=s*Math.PI*.38;
+  addM(cl,'skeleton',null);
+});
+
+// Pelvis
+const pelvis=bone(new THREE.TorusGeometry(.24,.062,8,22,Math.PI*1.25));
+pelvis.position.set(0,-.27,0); pelvis.rotation.x=Math.PI*.5;
+addM(pelvis,'skeleton',null);
+
+// Arm bones
+[-1,1].forEach((s,i)=>{
+  const x=s*.48;
+  const hum=bone(new THREE.CylinderGeometry(.038,.033,.5,8));
+  hum.position.set(x*1.12,.66,0); hum.rotation.z=-s*.16;
+  addM(hum,'skeleton',null);
+  const rad=bone(new THREE.CylinderGeometry(.024,.019,.46,8));
+  rad.position.set(x*1.2,.14,.02); rad.rotation.z=-s*.13;
+  addM(rad,'skeleton',null);
+  const uln=bone(new THREE.CylinderGeometry(.019,.015,.46,8));
+  uln.position.set(x*1.24,.14,-.02); uln.rotation.z=-s*.13;
+  addM(uln,'skeleton',null);
+});
+
+// Leg bones
+[-1,1].forEach(s=>{
+  const x=s*.13;
+  const fem=bone(new THREE.CylinderGeometry(.052,.042,.7,10));
+  fem.position.set(x,-.74,0);
+  addM(fem,'skeleton',null);
+  const pat=bone(new THREE.SphereGeometry(.038,8,6));
+  pat.position.set(x,-1.14,.07);
+  addM(pat,'skeleton',null);
+  const tib=bone(new THREE.CylinderGeometry(.036,.028,.66,10));
+  tib.position.set(x,-1.41,.01);
+  addM(tib,'skeleton',null);
+  const fib=bone(new THREE.CylinderGeometry(.017,.013,.64,8));
+  fib.position.set(x+s*.04,-1.41,-.01);
+  addM(fib,'skeleton',null);
+});
+
+// ─── NERVOUS SYSTEM ────────────────────────────────────────────────────────────
+const NRV=0xffd700,NRV2=0xffaa00;
+function nerve(geo,c=NRV){return mk(geo,c,.92,0xff9900,.4,.35,.2)}
+
+const brain=nerve(new THREE.SphereGeometry(.195,22,18));
+brain.scale.set(1,.88,.9); brain.position.set(0,1.65,.01);
+addM(brain,'nervous','brain');
+
+// Brain ridges overlay
+for(let i=0;i<8;i++){
+  const a=i/8*Math.PI*2;
+  const r=nerve(new THREE.TorusGeometry(.12,.018,6,18,Math.PI*.4),NRV2);
+  r.position.set(Math.sin(a)*.08,1.65+Math.cos(a)*.05,0);
+  r.rotation.z=a+Math.PI*.5;
+  addM(r,'nervous',null);
+}
+
+const cerebellum=nerve(new THREE.SphereGeometry(.1,14,12));
+cerebellum.scale.set(1.2,.72,.88); cerebellum.position.set(0,1.52,-.14);
+addM(cerebellum,'nervous','cerebellum');
+
+const brainstem=nerve(new THREE.CylinderGeometry(.038,.052,.14,10));
+brainstem.position.set(0,1.4,-.04);
+addM(brainstem,'nervous',null);
+
+const spinalCord=nerve(new THREE.CylinderGeometry(.022,.018,2.08,10));
+spinalCord.position.set(0,.27,-.02);
+addM(spinalCord,'nervous','spinalCord');
+
+// Nerve branches
+[
+  [.11,.88,0,0,0,.62,.28],[-0.11,.88,0,0,0,-.62,.28],
+  [.27,.74,0,0,0,1.1,.34],[-0.27,.74,0,0,0,-1.1,.34],
+  [.08,-.28,0,0,0,.32,.52],[-0.08,-.28,0,0,0,-.32,.52],
+  [.06,.12,0,0,0,.5,.24],[-0.06,.12,0,0,0,-.5,.24],
+  [.07,-1.0,0,0,0,.28,.58],[-0.07,-1.0,0,0,0,-.28,.58],
+].forEach(([px,py,pz,rx,ry,rz,len])=>{
+  const n=nerve(new THREE.CylinderGeometry(.007,.004,len,6),NRV2);
+  n.position.set(px,py,pz); n.rotation.set(rx,ry,rz);
+  addM(n,'nervous',null);
+});
+
+// ─── RESPIRATORY SYSTEM ────────────────────────────────────────────────────────
+const RESP=0x00ccee,RESP2=0x0099bb;
+function resp(geo,c=RESP){return mk(geo,c,.88,0x005566,.32,.4,.08)}
+
+const trachea=resp(new THREE.CylinderGeometry(.038,.038,.48,14));
+trachea.position.set(0,1.0,.08);
+addM(trachea,'respiratory','trachea');
+
+// Tracheal rings
+for(let i=0;i<7;i++){
+  const ring=resp(new THREE.TorusGeometry(.04,.012,6,14,Math.PI*1.7),RESP2);
+  ring.position.set(0,.8+i*.068,.08); ring.rotation.y=Math.PI*.15;
+  addM(ring,'respiratory',null);
+}
+
+// Bronchi
+[-1,1].forEach(s=>{
+  const b=resp(new THREE.CylinderGeometry(.027,.022,.2,10));
+  b.position.set(s*.13,.73,.06); b.rotation.z=s*.52;
+  addM(b,'respiratory',null);
+  // secondary bronchi
+  const b2=resp(new THREE.CylinderGeometry(.018,.014,.16,8),RESP2);
+  b2.position.set(s*.22,.62,.04); b2.rotation.z=s*.9;
+  addM(b2,'respiratory',null);
+});
+
+const lungL=resp(new THREE.CylinderGeometry(.135,.1,.56,18));
+lungL.scale.set(1,1,.72); lungL.position.set(-.17,.6,-.01);
+addM(lungL,'respiratory','lungs');
+
+const lungR=resp(new THREE.CylinderGeometry(.12,.09,.52,18),RESP2);
+lungR.scale.set(.88,1,.72); lungR.position.set(.155,.6,-.01);
+addM(lungR,'respiratory','lungs');
+
+// Lung upper lobes
+[-.17,.14].forEach((x,i)=>{
+  const lobe=resp(new THREE.SphereGeometry(.1,14,12),i===0?RESP:RESP2);
+  lobe.scale.set(1,1.15,.72); lobe.position.set(x,.93,-.01);
+  addM(lobe,'respiratory',null);
+  const lobe2=resp(new THREE.SphereGeometry(.08,12,10),i===0?RESP:RESP2);
+  lobe2.scale.set(.9,1,.68); lobe2.position.set(x,.38,-.01);
+  addM(lobe2,'respiratory',null);
+});
+
+const diaph=resp(new THREE.CylinderGeometry(.24,.24,.04,22));
+diaph.scale.set(1,1,.7); diaph.position.set(0,.3,0);
+addM(diaph,'respiratory','diaphragm');
+
+// ─── CIRCULATORY SYSTEM ────────────────────────────────────────────────────────
+const ART=0xff2222,VEIN=0x4455ee,ART2=0xff5533;
+function art(geo,c=ART){return mk(geo,c,.92,0x990000,.4,.45,.15)}
+function vein(geo){return mk(geo,VEIN,.88,0x220066,.35,.45,.1)}
+
+const heart=art(new THREE.SphereGeometry(.12,18,16));
+heart.scale.set(1.12,1.18,.96); heart.position.set(-.06,.69,.09);
+addM(heart,'circulatory','heart');
+
+const heartApex=art(new THREE.ConeGeometry(.08,.1,14));
+heartApex.position.set(-.07,.54,.09);
+addM(heartApex,'circulatory',null);
+
+// Ascending aorta
+const aortaAsc=art(new THREE.CylinderGeometry(.034,.038,.23,10));
+aortaAsc.position.set(.04,.86,.05);
+addM(aortaAsc,'circulatory','aorta');
+
+// Aortic arch
+const arch=art(new THREE.TorusGeometry(.088,.024,8,22,Math.PI));
+arch.position.set(.04,.99,0); arch.rotation.z=-Math.PI*.5;
+addM(arch,'circulatory',null);
+
+// Descending aorta
+const aortaDesc=art(new THREE.CylinderGeometry(.03,.024,1.08,10));
+aortaDesc.position.set(-.05,.36,-.04);
+addM(aortaDesc,'circulatory',null);
+
+// Carotid arteries
+[-1,1].forEach(s=>{
+  const c=art(new THREE.CylinderGeometry(.016,.016,.36,8));
+  c.position.set(s*.06,1.14,.04);
+  addM(c,'circulatory',null);
+});
+
+// Subclavian / brachial arteries
+[-1,1].forEach((s,i)=>{
+  const sub=art(new THREE.CylinderGeometry(.018,.015,.24,8));
+  sub.position.set(s*.22,.98,.02); sub.rotation.z=-s*.7;
+  addM(sub,'circulatory',null);
+  const brach=art(new THREE.CylinderGeometry(.014,.012,.52,8));
+  brach.position.set(s*.5,.66,0); brach.rotation.z=-s*.16;
+  addM(brach,'circulatory',null);
+  const brach2=art(new THREE.CylinderGeometry(.012,.01,.5,8));
+  brach2.position.set(s*.57,.14,0); brach2.rotation.z=-s*.13;
+  addM(brach2,'circulatory',null);
+});
+
+// Iliac arteries
+[-1,1].forEach(s=>{
+  const il=art(new THREE.CylinderGeometry(.016,.013,.25,8));
+  il.position.set(s*.1,-.22,0); il.rotation.z=-s*.38;
+  addM(il,'circulatory',null);
+  const fem=art(new THREE.CylinderGeometry(.013,.01,.7,8));
+  fem.position.set(s*.15,-.76,.02);
+  addM(fem,'circulatory',null);
+  const tib=art(new THREE.CylinderGeometry(.009,.007,.62,8));
+  tib.position.set(s*.15,-1.43,.02);
+  addM(tib,'circulatory',null);
+});
+
+// SVC / IVC
+const svc=vein(new THREE.CylinderGeometry(.028,.028,.26,10));
+svc.position.set(.09,.83,.02);
+addM(svc,'circulatory',null);
+
+const ivc=vein(new THREE.CylinderGeometry(.03,.03,.52,10));
+ivc.position.set(.07,.47,-.03);
+addM(ivc,'circulatory',null);
+
+// Pulmonary trunk
+const pulm=art(new THREE.CylinderGeometry(.022,.022,.18,8),ART2);
+pulm.position.set(-.04,.78,.04); pulm.rotation.z=.58;
+addM(pulm,'circulatory',null);
+
+// Femoral veins
+[-1,1].forEach(s=>{
+  const fv=vein(new THREE.CylinderGeometry(.011,.009,.68,8));
+  fv.position.set(s*.12,-.76,-.02);
+  addM(fv,'circulatory','veins');
+  const cv=vein(new THREE.CylinderGeometry(.009,.007,.6,8));
+  cv.position.set(s*.12,-1.42,-.01);
+  addM(cv,'circulatory',null);
+});
+
+// Jugular veins
+[-1,1].forEach(s=>{
+  const jug=vein(new THREE.CylinderGeometry(.014,.014,.32,8));
+  jug.position.set(s*.07,1.1,.02);
+  addM(jug,'circulatory',null);
+});
+
+// ─── MUSCULAR SYSTEM ───────────────────────────────────────────────────────────
+const MUS=0xcc1155,MUS2=0xdd2266;
+function mus(geo,c=MUS){return mk(geo,c,.84,0x880033,.45,.58,.04)}
+
+// Pectorals
+[-1,1].forEach((s,i)=>{
+  const p=mus(new THREE.SphereGeometry(.14,14,12),i===0?MUS:MUS2);
+  p.scale.set(1.35,.62,.6); p.position.set(s*.14,.83,.14);
+  addM(p,'muscular',i===0?'pectorals':null);
+});
+
+// Deltoids
+[-1,1].forEach(s=>{
+  const d=mus(new THREE.SphereGeometry(.1,12,10));
+  d.scale.set(.8,1.35,.78); d.position.set(s*.36,.94,0);
+  addM(d,'muscular',null);
+});
+
+// Biceps + triceps
+[-1,1].forEach((s,i)=>{
+  const bi=mus(new THREE.CylinderGeometry(.062,.052,.42,12),MUS2);
+  bi.position.set(s*.52,.71,.025); bi.rotation.z=-s*.16;
+  addM(bi,'muscular',i===0?'biceps':null);
+  const tri=mus(new THREE.CylinderGeometry(.055,.045,.4,12));
+  tri.position.set(s*.52,.71,-.025); tri.rotation.z=-s*.16;
+  addM(tri,'muscular',null);
+  const fore=mus(new THREE.CylinderGeometry(.052,.038,.42,10),MUS2);
+  fore.position.set(s*.57,.17,0); fore.rotation.z=-s*.13;
+  addM(fore,'muscular',null);
+});
+
+// Abdominals
+for(let r=0;r<4;r++){
+  [-1,1].forEach(s=>{
+    const ab=mus(new THREE.BoxGeometry(.1,.1,.055));
+    ab.position.set(s*.065,.56-r*.12,.17);
+    addM(ab,'muscular',null);
+  });
+}
+
+// Lats
+[-1,1].forEach(s=>{
+  const lat=mus(new THREE.SphereGeometry(.13,12,10),MUS2);
+  lat.scale.set(1,1.85,.5); lat.position.set(s*.18,.62,-.12);
+  addM(lat,'muscular',null);
+});
+
+// Glutes
+[-1,1].forEach(s=>{
+  const gl=mus(new THREE.SphereGeometry(.12,12,10));
+  gl.scale.set(1,1,.82); gl.position.set(s*.12,-.27,-.12);
+  addM(gl,'muscular',null);
+});
+
+// Quadriceps + hamstrings + calves
+[-1,1].forEach((s,i)=>{
+  const x=s*.13;
+  const q=mus(new THREE.CylinderGeometry(.09,.076,.64,12),MUS2);
+  q.position.set(x,-.74,.02);
+  addM(q,'muscular',i===0?'quadriceps':null);
+  const h=mus(new THREE.CylinderGeometry(.078,.064,.62,12));
+  h.position.set(x,-.74,-.03);
+  addM(h,'muscular',null);
+  const c=mus(new THREE.CylinderGeometry(.07,.05,.57,10),MUS2);
+  c.position.set(x,-1.42,0);
+  addM(c,'muscular',null);
+});
+
+// ─── ENVIRONMENT ───────────────────────────────────────────────────────────────
+// Grid floor
+const grid=new THREE.GridHelper(12,24,0x112244,0x0a1428);
+grid.position.y=-2.05; scene.add(grid);
+
+// Platform glow
+const platM=new THREE.Mesh(new THREE.CylinderGeometry(.9,.9,.018,32),
+  new THREE.MeshStandardMaterial({color:0x001133,emissive:0x002255,emissiveIntensity:1.2,transparent:true,opacity:.55}));
+platM.position.y=-2.0; scene.add(platM);
+
+// Circular ring decoration
+const ring=new THREE.Mesh(new THREE.TorusGeometry(1.2,.012,8,64),
+  new THREE.MeshStandardMaterial({color:0x00d4ff,emissive:0x00d4ff,emissiveIntensity:.6,transparent:true,opacity:.35}));
+ring.rotation.x=Math.PI*.5; ring.position.y=-1.98; scene.add(ring);
+
+// ─── STATE ─────────────────────────────────────────────────────────────────────
+const sysState={skeleton:true,nervous:true,respiratory:true,circulatory:true,muscular:true};
+const sysOpacity={skeleton:1,nervous:1,respiratory:1,circulatory:1,muscular:1,body:.22};
+let autoRot=false,hovMesh=null,selMesh=null;
+
+const raycaster=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
+const tip=document.getElementById('tip');
+const infoPanel=document.getElementById('info-panel');
+
+const SYS_COLORS={
+  skeleton:'#e8e0d0',nervous:'#ffd700',respiratory:'#00ccee',circulatory:'#ff4444',muscular:'#ff6699'
+};
+
+// ─── SYSTEM TOGGLES ────────────────────────────────────────────────────────────
+document.querySelectorAll('.sys-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const s=btn.dataset.sys;
+    sysState[s]=!sysState[s];
+    G[s].visible=sysState[s];
+    btn.classList.toggle('active',sysState[s]);
+    btn.querySelector('.tog').textContent=sysState[s]?'ON':'OFF';
+  });
+});
+
+document.getElementById('btn-all').addEventListener('click',()=>{
+  Object.keys(sysState).forEach(s=>{sysState[s]=true;G[s].visible=true;});
+  document.querySelectorAll('.sys-btn').forEach(b=>{b.classList.add('active');b.querySelector('.tog').textContent='ON';});
+});
+document.getElementById('btn-none').addEventListener('click',()=>{
+  Object.keys(sysState).forEach(s=>{sysState[s]=false;G[s].visible=false;});
+  document.querySelectorAll('.sys-btn').forEach(b=>{b.classList.remove('active');b.querySelector('.tog').textContent='OFF';});
+  closeInfo();
+});
+
+document.getElementById('btn-rotate').addEventListener('click',function(){
+  autoRot=!autoRot; controls.autoRotate=autoRot; controls.autoRotateSpeed=1.8;
+  this.classList.toggle('active',autoRot);
+});
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  camera.position.set(0,.1,6.5); controls.target.set(0,.1,0); controls.update();
+});
+document.getElementById('btn-front').addEventListener('click',()=>{
+  camera.position.set(0,.1,6.5); controls.target.set(0,.1,0); controls.update();
+});
+document.getElementById('btn-side').addEventListener('click',()=>{
+  camera.position.set(6,.1,0); controls.target.set(0,.1,0); controls.update();
+});
+document.getElementById('btn-back').addEventListener('click',()=>{
+  camera.position.set(0,.1,-6.5); controls.target.set(0,.1,0); controls.update();
+});
+
+// Opacity panel toggle
+let opacPanelOpen=false;
+document.getElementById('btn-opacity').addEventListener('click',function(){
+  opacPanelOpen=!opacPanelOpen;
+  document.getElementById('opacity-panel').classList.toggle('show',opacPanelOpen);
+  this.classList.toggle('active',opacPanelOpen);
+});
+document.querySelectorAll('[data-op]').forEach(slider=>{
+  slider.addEventListener('input',()=>{
+    const sys=slider.dataset.op;
+    const val=parseFloat(slider.value);
+    sysOpacity[sys]=val;
+    G[sys].traverse(obj=>{
+      if(obj.isMesh && obj.material){
+        obj.material.opacity=obj.userData.origOpacity!==undefined?obj.userData.origOpacity*val:val;
+        obj.material.transparent=obj.material.opacity<.99;
+        obj.material.depthWrite=obj.material.opacity>=.5;
+        obj.material.needsUpdate=true;
+      }
+    });
+  });
+});
+
+// Close info panel
+document.getElementById('ip-close').addEventListener('click',closeInfo);
+function closeInfo(){
+  if(selMesh){
+    selMesh.material.emissive.copy(selMesh.userData.origEmissive);
+    selMesh.material.emissiveIntensity=selMesh.userData.origEmissiveInt;
+    selMesh=null;
+  }
+  infoPanel.classList.remove('visible');
+}
+
+// ─── MOUSE INTERACTION ─────────────────────────────────────────────────────────
+function visibleInteractable(){return interactable.filter(m=>m.parent&&m.parent.visible);}
+
+renderer.domElement.addEventListener('mousemove',e=>{
+  mouse.x=(e.clientX/window.innerWidth)*2-1;
+  mouse.y=-(e.clientY/window.innerHeight)*2+1;
+  tip.style.left=(e.clientX+14)+'px';
+  tip.style.top=(e.clientY-12)+'px';
+
+  raycaster.setFromCamera(mouse,camera);
+  const hits=raycaster.intersectObjects(visibleInteractable());
+
+  if(hovMesh&&hovMesh!==selMesh){
+    hovMesh.material.emissive.copy(hovMesh.userData.origEmissive);
+    hovMesh.material.emissiveIntensity=hovMesh.userData.origEmissiveInt;
+    hovMesh=null;
+  }
+
+  if(hits.length){
+    const m=hits[0].object;
+    if(m.userData.organId&&m!==selMesh){
+      hovMesh=m;
+      m.material.emissive.setHex(0xffffff);
+      m.material.emissiveIntensity=.6;
+      const o=ORGANS[m.userData.organId];
+      tip.textContent=o?o.name:m.userData.organId;
+      tip.classList.add('on');
+      renderer.domElement.style.cursor='pointer';
+    }
+  } else {
+    tip.classList.remove('on');
+    renderer.domElement.style.cursor='default';
+  }
+});
+
+renderer.domElement.addEventListener('click',e=>{
+  raycaster.setFromCamera(mouse,camera);
+  const hits=raycaster.intersectObjects(visibleInteractable());
+
+  if(hits.length){
+    const m=hits[0].object;
+    const id=m.userData.organId;
+    if(!id) return;
+    const o=ORGANS[id];
+    if(!o) return;
+
+    if(selMesh&&selMesh!==m){
+      selMesh.material.emissive.copy(selMesh.userData.origEmissive);
+      selMesh.material.emissiveIntensity=selMesh.userData.origEmissiveInt;
+    }
+    selMesh=m;
+    m.material.emissive.setHex(0xffffff);
+    m.material.emissiveIntensity=1.0;
+
+    const pc=SYS_COLORS[o.system]||'#00d4ff';
+    infoPanel.style.setProperty('--pc',pc);
+    document.getElementById('ip-system').textContent=o.sysLabel;
+    document.getElementById('ip-name').textContent=o.name;
+    document.getElementById('ip-name-en').textContent=o.nameEn;
+    document.getElementById('ip-func').textContent=o.func;
+    document.getElementById('ip-fact').textContent=o.fact;
+    infoPanel.classList.add('visible');
+  } else {
+    closeInfo();
+  }
+});
+
+// ─── RESIZE ────────────────────────────────────────────────────────────────────
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+// ─── ANIMATE ───────────────────────────────────────────────────────────────────
+const clock=new THREE.Clock();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clock.getElapsedTime();
+
+  // Heartbeat
+  const beat=1+Math.max(0,Math.sin(t*1.8))*.06;
+  heart.scale.set(1.12*beat,1.18*beat,.96*beat);
+  heartApex.scale.setScalar(beat);
+
+  // Breathing
+  const breathe=1+Math.sin(t*.38)*.055;
+  lungL.scale.set(breathe,1,.72*breathe);
+  lungR.scale.set(.88*breathe,1,.72*breathe);
+  diaph.position.y=.3-Math.sin(t*.38)*.022;
+
+  // Ring pulse
+  const rp=1+Math.sin(t*.5)*.06;
+  ring.scale.set(rp,1,rp);
+  ring.material.emissiveIntensity=.5+Math.sin(t*.5)*.2;
+
+  // Brain subtle pulse (nervous activity)
+  brain.material.emissiveIntensity=.38+Math.sin(t*2.2)*.08;
+
+  controls.update();
+  renderer.render(scene,camera);
+}
+
+// ─── INIT ──────────────────────────────────────────────────────────────────────
+setTimeout(()=>document.getElementById('loading').classList.add('hidden'),1400);
+animate();
+</script>
+</body>
+</html>
